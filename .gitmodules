@@ -1,0 +1,3 @@
+[submodule "solana-nft-marketplace"]
+	path = solana-nft-marketplace
+	url = ./solana-nft-marketplace
