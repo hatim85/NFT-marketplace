@@ -1,35 +1,38 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, TokenAccount, Transfer, Token};
 use mpl_token_metadata::ID as METADATA_PROGRAM_ID;
-use mpl_token_metadata::pda::find_metadata_account;
+use mpl_token_metadata::accounts::{MasterEdition, Metadata as MetadataAccount};
 use mpl_token_metadata::types::{DataV2, Creator};
-use mpl_token_metadata::instruction::create_metadata_accounts_v3;
-use solana_program::program::invoke;
+use mpl_token_metadata::instructions::CreateMetadataAccountV3;
+use solana_program::program::{invoke, invoke_signed};
+use solana_program::instruction::Instruction;
 
-declare_id!("BLLM8SgKAAMRff8EDHgorDxgT1BFm9c6MeRZK1qP9BDg");
+declare_id!("3HdoDQLWBSaH9JGK3DRy68gYvySjWFWyyxumTHQhSNqD");
 
 #[program]
 pub mod solana_nft_marketplace {
     use super::*;
 
-    pub fn mint_nft(
+ pub fn mint_nft(
         ctx: Context<MintNFT>,
         uri: String,
         name: String,
         symbol: String,
         seller_fee_basis_points: u16,
     ) -> Result<()> {
-        // Find metadata PDA
-        let (metadata_pda, _bump) = find_metadata_account(&ctx.accounts.mint.key());
+        // Find the metadata PDA
+        let (metadata_pda, _bump) = Pubkey::find_program_address(
+            &[b"metadata", METADATA_PROGRAM_ID.as_ref(), ctx.accounts.mint.key().as_ref()],
+            &METADATA_PROGRAM_ID,
+        );
 
-        // Define creator
+        // Define creators
         let creators = vec![Creator {
             address: ctx.accounts.creator.key(),
-            verified: true,  // Creator is verified
-            share: 100,      // 100% ownership
+            verified: true,
+            share: 100,
         }];
 
-        // Define NFT metadata
         let metadata_data = DataV2 {
             name,
             symbol,
@@ -40,22 +43,19 @@ pub mod solana_nft_marketplace {
             uses: None,
         };
 
-        // Create metadata accounts v3 instruction
-        let ix = create_metadata_accounts_v3(
-            METADATA_PROGRAM_ID,
-            metadata_pda,
-            ctx.accounts.mint.key(),
-            ctx.accounts.mint_authority.key(),
-            ctx.accounts.payer.key(),
-            ctx.accounts.creator.key(),
-            metadata_data,
-            true,  // is_mutable
-            false, // update_authority_is_signer
-            None,  // collection
-            None,  // uses
-        );
+        // Create the metadata account instruction
+        let ix = CreateMetadataAccountV3 {
+            metadata: metadata_pda,                          // Metadata PDA
+            mint: ctx.accounts.mint.key(),                   // Mint address
+            mint_authority: ctx.accounts.mint_authority.key(), // Mint authority
+            payer: ctx.accounts.payer.key(),                 // Payer
+            update_authority: (ctx.accounts.creator.key(), false), // Update authority as a tuple
+            // data: metadata_data,                              // Metadata (DataV2 struct)
+            system_program: ctx.accounts.system_program.key(), // System program
+            rent: Some(ctx.accounts.rent.key()),              // Rent wrapped in Some
+        };
 
-        // Invoke the instruction to create metadata
+        // Invoke the instruction
         invoke(
             &ix,
             &[
@@ -138,6 +138,7 @@ pub enum MarketplaceError {
     InvalidPrice,
 }
 
+
 #[derive(Accounts)]
 pub struct MintNFT<'info> {
     #[account(init, payer = payer, mint::decimals = 0, mint::authority = mint_authority)]
@@ -151,8 +152,8 @@ pub struct MintNFT<'info> {
     pub creator: Signer<'info>,
     pub payer_token_account: Account<'info, TokenAccount>,
     pub token_program: Program<'info, Token>,
-    pub system_program: Program<'info, System>,
-    pub rent: Sysvar<'info, Rent>,
+    pub system_program: Program<'info, System>, // Ensure this is included
+    pub rent: Sysvar<'info, Rent>, // Ensure this is included
 }
 
 #[derive(Accounts)]
